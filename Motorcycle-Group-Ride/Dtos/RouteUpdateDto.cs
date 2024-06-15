@@ -1,12 +1,10 @@
-﻿namespace Motorcycle_Group_Ride.Models
+﻿namespace Motorcycle_Group_Ride.Dtos
 {
-    public class GroupRide
+    public class RouteUpdateDto
     {
-        public int Id { get; set; }
         public string Name { get; set; }
         public string StartPoint { get; set; }
         public string EndPoint { get; set; }
         public DateTime StartTime { get; set; }
-        public int UserId { get; set; }
     }
 }
