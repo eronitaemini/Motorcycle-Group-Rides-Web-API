@@ -1,0 +1,6 @@
+@Motorcycle_Group_Ride_HostAddress = http://localhost:5148
+
+GET {{Motorcycle_Group_Ride_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
