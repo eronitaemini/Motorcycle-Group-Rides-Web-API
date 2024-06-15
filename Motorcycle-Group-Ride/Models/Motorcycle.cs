@@ -42,6 +42,6 @@ namespace Motorcycle_Group_Ride.Models
 
         //   [ForeignKey("UserId")]
         //    public virtual UserProfile UserProfile { get; set; } // Navigation property to the user profile
-
+        //
     }
 }
