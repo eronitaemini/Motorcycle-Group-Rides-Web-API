@@ -10,18 +10,14 @@ namespace Motorcycle_Group_Ride.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class AuthenticationController: ControllerBase
+    public class AuthenticationController : ControllerBase
     {
         private readonly UserManager<IdentityUser> _userManager;
-        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
 
-        public AuthenticationController(UserManager<IdentityUser> userManager,
-                                        RoleManager<IdentityRole> roleManager,
-                                        IConfiguration configuration)
+        public AuthenticationController(UserManager<IdentityUser> userManager, IConfiguration configuration)
         {
             _userManager = userManager;
-            _roleManager = roleManager;
             _configuration = configuration;
         }
 
@@ -29,84 +25,59 @@ namespace Motorcycle_Group_Ride.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> RegisterUser(RegisterDto registerDto)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                var userExists = await _userManager.FindByNameAsync(registerDto.Username);
-                if (userExists != null)
-                {
-                    return Conflict("Username already exists");
-                }
-
-                var newUser = new IdentityUser { UserName = registerDto.Username, Email = registerDto.Email };
-                var result = await _userManager.CreateAsync(newUser, registerDto.Password);
-
-                if (!result.Succeeded)
-                {
-                    return StatusCode(500, $"User creation failed: {result.Errors}");
-                }
-
-                return Ok("User registered successfully");
+                return BadRequest(ModelState);
             }
-            catch (Exception ex)
+
+            var userExists = await _userManager.FindByNameAsync(registerDto.Username);
+            if (userExists != null)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return Conflict("Username already exists");
             }
+
+            var newUser = new IdentityUser { UserName = registerDto.Username, Email = registerDto.Email };
+            var result = await _userManager.CreateAsync(newUser, registerDto.Password);
+
+            if (!result.Succeeded)
+            {
+                return StatusCode(500, $"User creation failed: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+            }
+
+            return Ok("User registered successfully");
         }
 
         // POST api/authentication/login
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginDto loginDto)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                var user = await _userManager.FindByNameAsync(loginDto.Username);
+                return BadRequest(ModelState);
+            }
 
-                if (user != null && await _userManager.CheckPasswordAsync(user, loginDto.Password))
+            var user = await _userManager.FindByNameAsync(loginDto.Username);
+
+            if (user != null && await _userManager.CheckPasswordAsync(user, loginDto.Password))
+            {
+                var token = GenerateJwtToken(user);
+
+                return Ok(new
                 {
-                    var authClaims = new[]
-                    {
-                        new Claim(ClaimTypes.Name, user.UserName),
-                        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                    };
-
-                    var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"]));
-
-                    var token = new JwtSecurityToken(
-                        issuer: _configuration["JWT:ValidIssuer"],
-                        audience: _configuration["JWT:ValidAudience"],
-                        expires: DateTime.UtcNow.AddHours(2),
-                        claims: authClaims,
-                        signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
-                    );
-
-                    return Ok(new
-                    {
-                        token = new JwtSecurityTokenHandler().WriteToken(token),
-                        expiration = token.ValidTo
-                    });
-                }
-
-                return Unauthorized("Invalid credentials");
+                    token = new JwtSecurityTokenHandler().WriteToken(token),
+                    expiration = token.ValidTo
+                });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
-            }
+
+            return Unauthorized("Invalid credentials");
         }
 
         // POST api/authentication/logout
         [HttpPost("logout")]
-        public async Task<IActionResult> Logout()
+        public IActionResult Logout()
         {
-            try
-            {
-                // Perform logout logic here if needed (optional for JWT)
-                return Ok("User logged out successfully");
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
-            }
+            // JWT logout is handled client-side by simply deleting the token
+            return Ok("User logged out successfully");
         }
 
         // POST api/authentication/refresh-token
@@ -116,38 +87,20 @@ namespace Motorcycle_Group_Ride.Controllers
             try
             {
                 var principal = GetPrincipalFromExpiredToken(refreshTokenDto.Token);
-                var username = principal.Identity.Name; // Retrieve username from JWT token
+                var username = principal.Identity.Name;
 
-                // Retrieve the user from your database if necessary
                 var user = await _userManager.FindByNameAsync(username);
-
-                // If user is not found or token is invalid, return error
                 if (user == null || !ValidateToken(refreshTokenDto.Token, user))
                 {
                     return BadRequest("Invalid token");
                 }
 
-                // Generate new JWT token (refresh token)
-                var authClaims = new[]
-                {
-                    new Claim(ClaimTypes.Name, user.UserName),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                };
-
-                var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"]));
-
-                var token = new JwtSecurityToken(
-                    issuer: _configuration["JWT:ValidIssuer"],
-                    audience: _configuration["JWT:ValidAudience"],
-                    expires: DateTime.UtcNow.AddHours(2),
-                    claims: authClaims,
-                    signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
-                );
+                var newToken = GenerateJwtToken(user);
 
                 return Ok(new
                 {
-                    token = new JwtSecurityTokenHandler().WriteToken(token),
-                    expiration = token.ValidTo
+                    token = new JwtSecurityTokenHandler().WriteToken(newToken),
+                    expiration = newToken.ValidTo
                 });
             }
             catch (Exception ex)
@@ -156,50 +109,72 @@ namespace Motorcycle_Group_Ride.Controllers
             }
         }
 
-        
+        // POST api/authentication/change-password/{userId}
         [HttpPost("change-password/{userId}")]
         public async Task<IActionResult> ChangePassword(string userId, ChangePasswordDto changePasswordDto)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                var user = await _userManager.FindByIdAsync(userId);
-                if (user == null)
-                {
-                    return NotFound("User not found");
-                }
-
-                var result = await _userManager.ChangePasswordAsync(user, changePasswordDto.CurrentPassword, changePasswordDto.NewPassword);
-
-                if (!result.Succeeded)
-                {
-                    return BadRequest($"Change password failed: {result.Errors}");
-                }
-
-                return Ok("Password changed successfully");
+                return BadRequest(ModelState);
             }
-            catch (Exception ex)
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
             {
-                return StatusCode(500, $"Internal server error: {ex.Message}");
+                return NotFound("User not found");
             }
+
+            var result = await _userManager.ChangePasswordAsync(user, changePasswordDto.CurrentPassword, changePasswordDto.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                return BadRequest($"Change password failed: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+            }
+
+            return Ok("Password changed successfully");
+        }
+
+        private JwtSecurityToken GenerateJwtToken(IdentityUser user)
+        {
+            var authClaims = new[]
+            {
+                new Claim(ClaimTypes.Name, user.UserName),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"]));
+
+            var token = new JwtSecurityToken(
+                issuer: _configuration["JWT:ValidIssuer"],
+                audience: _configuration["JWT:ValidAudience"],
+                expires: DateTime.UtcNow.AddHours(2),
+                claims: authClaims,
+                signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
+            );
+
+            return token;
         }
 
         private ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
         {
             var tokenValidationParameters = new TokenValidationParameters
             {
-                ValidateAudience = false, // You might want to validate these based on your needs
+                ValidateAudience = false,
                 ValidateIssuer = false,
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"])),
-                ValidateLifetime = false // Do not validate lifetime here, as we're refreshing the token
+                ValidateLifetime = false
             };
 
             var tokenHandler = new JwtSecurityTokenHandler();
             SecurityToken securityToken;
             var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out securityToken);
             var jwtSecurityToken = securityToken as JwtSecurityToken;
+
             if (jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+            {
                 throw new SecurityTokenException("Invalid token");
+            }
 
             return principal;
         }
@@ -208,29 +183,24 @@ namespace Motorcycle_Group_Ride.Controllers
         {
             var tokenValidationParameters = new TokenValidationParameters
             {
-                ValidateAudience = false, // You might want to validate these based on your needs
+                ValidateAudience = false,
                 ValidateIssuer = false,
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"])),
-                ValidateLifetime = false // Do not validate lifetime here, as we're refreshing the token
+                ValidateLifetime = false
             };
 
             var tokenHandler = new JwtSecurityTokenHandler();
             SecurityToken securityToken;
             var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out securityToken);
             var jwtSecurityToken = securityToken as JwtSecurityToken;
-            if (jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
-                throw new SecurityTokenException("Invalid token");
 
-            // Additional validation if needed (e.g., user's ID, roles, etc.)
+            if (jwtSecurityToken == null || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new SecurityTokenException("Invalid token");
+            }
+
             return true;
         }
-
-
-
-
-
     }
-
 }
-
