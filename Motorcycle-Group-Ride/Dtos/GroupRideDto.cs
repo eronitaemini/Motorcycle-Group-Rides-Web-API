@@ -9,4 +9,3 @@
         public DateTime StartTime { get; set; }
     }
 }
-//.
