@@ -12,14 +12,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Controllers\" />
-    <Folder Include="Data\" />
-    <Folder Include="ExternalModel\" />
-    <Folder Include="Migrations\" />
-    <Folder Include="Interfaces\" />
-    <Folder Include="Profiles\" />
-    <Folder Include="Repositories\" />
-    <Folder Include="Services\" />
+      <Folder Include="Controllers\" />
+      <Folder Include="Data\" />
+	  <Folder Include="Dtos"/>
+      <Folder Include="ExternalModel\" />
+	  <Folder Include="Interfaces\" />
+      <Folder Include="Migrations\" />
+	  <Folder Include="Models"/>
+	  <Folder Include="Profiles\" />
+	  <Folder Include="Repositories\" />
+	  <Folder Include="Services\" />
   </ItemGroup>
 
 </Project>
