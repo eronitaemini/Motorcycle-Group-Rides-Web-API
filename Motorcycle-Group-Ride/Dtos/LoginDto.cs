@@ -1,10 +1,9 @@
 ﻿namespace Motorcycle_Group_Ride.Dtos
 {
-    public class UserDto
+    public class LoginDto
     {
-        public int Id { get; set; }
         public string Username { get; set; }
-        public string Email { get; set; }
+        public string Password { get; set; }
     }
 }
 //.
