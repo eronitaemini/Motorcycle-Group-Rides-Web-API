@@ -20,7 +20,7 @@ namespace Motorcycle_Group_Ride.Controllers
             _userManager = userManager;
             _configuration = configuration;
         }
-
+        
         // POST api/authentication/register
         [HttpPost("register")]
         public async Task<IActionResult> RegisterUser(RegisterDto registerDto)
